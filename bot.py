@@ -7,10 +7,11 @@ import pyotp, time, pandas as pd
 import ta
 
 # ─── CONFIG ────────────────────────────────────
-API_KEY    = "UrAUG4p9"     # Angel One dashboard
-CLIENT_ID  = "AACI224719"
-PASSWORD   = "5270"
-TOTP_KEY   = "BQLZUC7GFMEUXSZNJHWTTYXWU4"  # Enable 2FA in Angel app
+import os
+API_KEY          = os.environ.get("API_KEY")
+CLIENT_ID        = os.environ.get("CLIENT_ID")
+PASSWORD         = os.environ.get("PASSWORD")
+TOTP_KEY         = os.environ.get("TOTP_KEY")  # Enable 2FA in Angel app
 
 SYMBOL     = "SBIN"
 EXCHANGE   = "NSE"
