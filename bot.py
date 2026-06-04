@@ -33,25 +33,31 @@ def login():
 # ─── FETCH CANDLES ───────────────────────────────
 def get_candles(obj, interval="FIVE_MINUTE"):
     from datetime import datetime, timedelta
+    time.sleep(2)
     now     = datetime.now()
     from_dt = (now - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M")
     to_dt   = now.strftime("%Y-%m-%d %H:%M")
-    hist = obj.getCandleData({
-        "exchange"    : EXCHANGE,
-        "symboltoken" : TOKEN,
-        "interval"    : interval,
-        "fromdate"    : from_dt,
-        "todate"      : to_dt
-    })
-    print(f"Raw API response: {hist}")
-    if not hist or not hist.get('data') or len(hist['data']) == 0:
-        print("No candle data returned. Market may be closed.")
+    try:
+        hist = obj.getCandleData({
+            "exchange"    : EXCHANGE,
+            "symboltoken" : TOKEN,
+            "interval"    : interval,
+            "fromdate"    : from_dt,
+            "todate"      : to_dt
+        })
+        if not hist or not hist.get('data') or len(hist['data']) == 0:
+            print("No candle data returned. Market may be closed.")
+            return None
+        df = pd.DataFrame(hist['data'],
+             columns=['time','open','high','low','close','vol'])
+        df['close'] = df['close'].astype(float)
+        print(f"Fetched {len(df)} candles. Latest close: {df['close'].iloc[-1]}")
+        return df
+    except Exception as e:
+        print(f"API error: {e}")
+        print("Waiting 60 seconds before retry...")
+        time.sleep(60)
         return None
-    df = pd.DataFrame(hist['data'],
-         columns=['time','open','high','low','close','vol'])
-    df['close'] = df['close'].astype(float)
-    print(f"Fetched {len(df)} candles. Latest close: {df['close'].iloc[-1]}")
-    return df
 # ─── STRATEGY ───────────────────────────────────
 def get_signal(df):
     if df is None or len(df) < 15:
@@ -88,7 +94,16 @@ def run():
     position = "NONE"
     entry_price = 0
     print("Bot started. Scanning every 5 minutes...")
+    time.sleep(10)
     while True:
+        from datetime import datetime
+        now = datetime.now()
+        market_open  = now.replace(hour=9,  minute=15, second=0)
+        market_close = now.replace(hour=15, minute=30, second=0)
+        if not (market_open <= now <= market_close) or now.weekday() > 4:
+            print("Market closed. Waiting 15 minutes...")
+            time.sleep(900)
+            continue
         if trades_today >= MAX_TRADES:
             print("Max trades reached. Stopping for today.")
             break
