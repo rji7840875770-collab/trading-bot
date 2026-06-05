@@ -93,42 +93,52 @@ def run():
     trades_today = 0
     position = "NONE"
     entry_price = 0
+    send_telegram("🤖 <b>Trading Bot Started</b>\nScanning every 5 minutes...\nMarket opens at 9:15 AM IST")
     print("Bot started. Scanning every 5 minutes...")
     time.sleep(10)
     while True:
-        from datetime import datetime
-        now = datetime.now()
-        market_open  = now.replace(hour=9,  minute=15, second=0)
-        market_close = now.replace(hour=15, minute=30, second=0)
-        if not (market_open <= now <= market_close) or now.weekday() > 4:
-            print("Market closed. Waiting 15 minutes...")
-            time.sleep(900)
-            continue
-        if trades_today >= MAX_TRADES:
-            print("Max trades reached. Stopping for today.")
-            break
-            time.sleep(2)
-        df = get_candles(obj)
-        signal, last = get_signal(df)
-        if last is None:
-            print("Waiting 5 minutes and retrying...")
+        try:
+            from datetime import datetime
+            now = datetime.now()
+            market_open  = now.replace(hour=9,  minute=15, second=0)
+            market_close = now.replace(hour=15, minute=30, second=0)
+            if not (market_open <= now <= market_close) or now.weekday() > 4:
+                print("Market closed. Waiting 15 minutes...")
+                time.sleep(900)
+                continue
+            if trades_today >= MAX_TRADES:
+                print("Max trades reached. Stopping for today.")
+                send_telegram(f"⛔ <b>Bot Stopped</b>\nMax {MAX_TRADES} trades reached for today.")
+                time.sleep(900)
+                continue
+            df = get_candles(obj)
+            signal, last = get_signal(df)
+            if last is None:
+                print("Waiting 5 minutes and retrying...")
+                time.sleep(300)
+                continue
+            price = last['close']
+            if signal == "BUY" and position == "NONE":
+                place_order(obj, "BUY", price)
+                position = "LONG"
+                entry_price = price
+                trades_today += 1
+                send_telegram(f"🟢 <b>BUY Signal</b>\nStock: {SYMBOL}\nPrice: ₹{price}\nTarget: ₹{round(price*(1+TARGET),2)}\nStop Loss: ₹{round(price*(1-STOP_LOSS),2)}")
+            elif position == "LONG":
+                sl  = entry_price * (1 - STOP_LOSS)
+                tgt = entry_price * (1 + TARGET)
+                if price <= sl or price >= tgt or signal == "SELL":
+                    place_order(obj, "SELL", price)
+                    pnl = (price - entry_price) * QUANTITY
+                    print(f"Exit @ {price} | P&L: ₹{pnl:.2f}")
+                    send_telegram(f"🔴 <b>SELL Signal</b>\nStock: {SYMBOL}\nExit Price: ₹{price}\nP&L: ₹{round(pnl,2)}")
+                    position = "NONE"
             time.sleep(300)
+        except Exception as e:
+            print(f"Error in main loop: {e}")
+            print("Waiting 60 seconds before retrying...")
+            time.sleep(60)
             continue
-        price = last['close']
-        if signal == "BUY" and position == "NONE":
-            place_order(obj, "BUY", price)
-            position = "LONG"
-            entry_price = price
-            trades_today += 1
-        elif position == "LONG":
-            sl  = entry_price * (1 - STOP_LOSS)
-            tgt = entry_price * (1 + TARGET)
-            if price <= sl or price >= tgt or signal == "SELL":
-                place_order(obj, "SELL", price)
-                pnl = (price - entry_price) * QUANTITY
-                print(f"Exit @ {price} | P&L: ₹{pnl:.2f}")
-                position = "NONE"
-        time.sleep(300)
 
 if __name__ == "__main__":
     run()
