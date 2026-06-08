@@ -4,9 +4,9 @@ import pyotp
 import pandas as pd
 import ta
 import requests as req
+import pytz
 from SmartApi import SmartConnect
 from datetime import datetime, timedelta
-import pytz
 
 # ─── CREDENTIALS ────────────────────────────────
 API_KEY          = os.environ.get("API_KEY")
@@ -25,6 +25,7 @@ STOP_LOSS  = 0.003
 TARGET     = 0.006
 MAX_TRADES = 5
 CAPITAL    = 1000
+IST        = pytz.timezone('Asia/Kolkata')
 
 # ─── TELEGRAM ───────────────────────────────────
 def send_telegram(message):
@@ -47,10 +48,26 @@ def login():
     print(f"Logged in: {data['data']['name']}")
     return obj
 
+# ─── MARKET HOURS CHECK ─────────────────────────
+def is_market_open():
+    now          = datetime.now(IST)
+    market_open  = now.replace(hour=9,  minute=15, second=0, microsecond=0)
+    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    ist_time     = now.strftime("%H:%M:%S")
+    ist_day      = now.strftime("%A")
+    print(f"IST Time: {ist_time} | Day: {ist_day}")
+    if now.weekday() > 4:
+        print("Weekend. Market closed.")
+        return False
+    if not (market_open <= now <= market_close):
+        print("Outside market hours. Market closed.")
+        return False
+    return True
+
 # ─── FETCH CANDLES ───────────────────────────────
 def get_candles(obj, interval="FIVE_MINUTE"):
     time.sleep(2)
-    now     = datetime.now()
+    now     = datetime.now(IST)
     from_dt = (now - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M")
     to_dt   = now.strftime("%Y-%m-%d %H:%M")
     try:
@@ -125,12 +142,8 @@ def run():
     time.sleep(10)
     while True:
         try:
-            ist          = pytz.timezone('Asia/Kolkata')
-now          = datetime.now(ist)
-market_open  = now.replace(hour=9,  minute=15, second=0, microsecond=0)
-market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-if not (market_open <= now <= market_close) or now.weekday() > 4:
-                print("Market closed. Waiting 15 minutes...")
+            if not is_market_open():
+                print("Waiting 15 minutes...")
                 time.sleep(900)
                 continue
             if trades_today >= MAX_TRADES:
@@ -138,8 +151,8 @@ if not (market_open <= now <= market_close) or now.weekday() > 4:
                 send_telegram(f"⛔ <b>Bot Stopped</b>\nMax {MAX_TRADES} trades reached for today.")
                 time.sleep(900)
                 continue
-            df             = get_candles(obj)
-            signal, last   = get_signal(df)
+            df           = get_candles(obj)
+            signal, last = get_signal(df)
             if last is None:
                 print("Waiting 5 minutes and retrying...")
                 time.sleep(300)
@@ -147,8 +160,8 @@ if not (market_open <= now <= market_close) or now.weekday() > 4:
             price = last['close']
             if signal == "BUY" and position == "NONE":
                 place_order(obj, "BUY", price)
-                position    = "LONG"
-                entry_price = price
+                position     = "LONG"
+                entry_price  = price
                 trades_today += 1
                 send_telegram(f"🟢 <b>BUY Signal</b>\nStock: {SYMBOL}\nPrice: ₹{price}\nTarget: ₹{round(price*(1+TARGET),2)}\nStop Loss: ₹{round(price*(1-STOP_LOSS),2)}")
             elif position == "LONG":
